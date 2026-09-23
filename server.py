@@ -25,7 +25,18 @@ AGENT_ID = os.environ["RUTGER_AGENT_ID"]
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 PORT = int(os.environ.get("PORT", "8080"))
+  
+TRANSFER_DELAY = float(os.environ.get("TRANSFER_DELAY", "4"))
 
+
+   async def close_after(ws, delay: float) -> None:
+       await asyncio.sleep(delay)
+       log.info("Koppling till kollega – avslutar Rutgers del av samtalet")
+       try:
+           await ws.close()
+       except Exception:
+           pass
+         
 # ElevenLabs-format -> 46elks-format
 FORMAT_MAP = {
     "pcm_8000": "pcm_8000",
@@ -155,6 +166,11 @@ async def handle_call(elks_ws):
                     log.info("Kund: %s", m.get("user_transcription_event", {}).get("user_transcript"))
                 elif t == "agent_response":
                     log.info("Rutger: %s", m.get("agent_response_event", {}).get("agent_response"))
+                elif t == "agent_tool_response":
+                    ev = m.get("agent_tool_response", {})
+                    log.info("Verktyg: %s (fel=%s)", ev.get("tool_name"), ev.get("is_error"))
+                    if ev.get("tool_name") == "transfer_to_colleague" and not ev.get("is_error"):
+                        asyncio.create_task(close_after(el_ws, TRANSFER_DELAY))
             log.info("ElevenLabs avslutade konversationen")
 
         tasks = [asyncio.create_task(elks_to_el()), asyncio.create_task(el_to_elks())]
